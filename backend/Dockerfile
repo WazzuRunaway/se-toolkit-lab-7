@@ -21,9 +21,10 @@ ENV UV_PYTHON_DOWNLOADS=0
 WORKDIR /app
 COPY pyproject.toml uv.lock /app/
 COPY backend /app/backend
+COPY bot /app/bot
 
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked
+    uv sync --locked --no-install-project
 
 # ---
 # Stage 2: use a final image without uv
