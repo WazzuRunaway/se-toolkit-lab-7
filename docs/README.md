@@ -9,7 +9,7 @@ This directory contains architecture and requirements documentation for the **Le
 
 The LMS is grounded in the **OBER** (Outcome-Based Educational Recommender) [^OBER] data model, which extends the classic user–item schema with learning outcomes and assessment items.
 
-## Structure
+## Structure burmyakov
 
 ```tree
 docs/
