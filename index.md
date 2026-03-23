@@ -88,7 +88,7 @@ Database seed:
 - [`.env.docker.example`](.env.docker.example) — template for container environment variables.
 - [`pyproject.toml`](pyproject.toml) — Python project metadata and dependencies.
 
-## Wiki
+## Wiki swag
 
 ### [Architectural views](./wiki/architectural-views.md)
 
