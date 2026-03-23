@@ -11,6 +11,7 @@ from typing import Optional
 from aiogram import Bot, Dispatcher, types, F
 from aiogram.filters import Command
 from aiogram.types import Message, BotCommand
+from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 try:
@@ -34,11 +35,22 @@ except ImportError as e:
     def handle_labs(): return "📚 Labs not available"
     def handle_scores(lab=""): return f"📊 Scores for {lab} not available"
 
+# Import intent router for Task 3
+try:
+    from handlers.intent_router import route_natural_language, format_welcome_with_keyboard
+    INTENT_ROUTER_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: Could not import intent router: {e}")
+    INTENT_ROUTER_AVAILABLE = False
+    def route_natural_language(msg, debug=False): return "🤖 Intent routing not available"
+    def format_welcome_with_keyboard(): return ("Welcome!", [])
+
 
 def parse_command(text: str) -> tuple[str, str]:
     """Parse command and arguments from text.
 
     Returns (command, args) where command is lowercase without /.
+    For natural language (non-command) text, returns ("natural", full_text).
     """
     text = text.strip()
     if not text.startswith('/'):
@@ -50,8 +62,13 @@ def parse_command(text: str) -> tuple[str, str]:
     return command, args
 
 
-def handle_test_command(command_text: str) -> str:
-    """Handle a command in test mode (no Telegram)."""
+def handle_test_command(command_text: str, debug: bool = True) -> str:
+    """Handle a command in test mode (no Telegram).
+
+    Args:
+        command_text: The command or natural language message to process
+        debug: If True, print debug info to stderr
+    """
     command, args = parse_command(command_text)
 
     if command == "start":
@@ -65,10 +82,23 @@ def handle_test_command(command_text: str) -> str:
     elif command == "scores":
         return handle_scores(args)
     elif command == "natural":
-        # For Task 3 - natural language processing
-        return f"🤖 Natural language processing: '{args}' (implemented in Task 3)"
+        # Natural language processing via LLM intent routing
+        return route_natural_language(args, debug=debug)
     else:
         return f"❓ Unknown command: /{command}. Type /help for available commands."
+
+
+def handle_natural_language(message: str, debug: bool = True) -> str:
+    """Handle natural language messages via LLM intent routing.
+
+    Args:
+        message: The natural language message from user
+        debug: If True, print debug info to stderr
+
+    Returns:
+        Formatted response string
+    """
+    return route_natural_language(message, debug=debug)
 
 
 async def run_telegram_bot():
@@ -79,16 +109,29 @@ async def run_telegram_bot():
 
     bot = Bot(
         token=settings.bot_token,
-        parse_mode=ParseMode.HTML
+        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
     )
     dp = Dispatcher()
+
+    # Import InlineKeyboardMarkup for inline buttons
+    from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 
     # Register command handlers
     @dp.message(Command("start"))
     async def cmd_start(message: Message):
-        """Handle /start command."""
-        response = handle_start()
-        await message.answer(response)
+        """Handle /start command with inline keyboard."""
+        response, keyboard_layout = format_welcome_with_keyboard()
+        # Build inline keyboard
+        keyboard = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(text=btn["text"], callback_data=btn["callback_data"])
+                    for btn in row
+                ]
+                for row in keyboard_layout
+            ]
+        )
+        await message.answer(response, reply_markup=keyboard)
 
     @dp.message(Command("help"))
     async def cmd_help(message: Message):
@@ -119,18 +162,41 @@ async def run_telegram_bot():
 
     @dp.message()
     async def handle_message(message: Message):
-        """Handle regular messages (for Task 3 - NLU)."""
-        # For now, show help on unknown messages
-        response = f"ℹ️ I don't understand that. Type /help for available commands."
+        """Handle regular messages via LLM intent routing (Task 3)."""
+        user_text = message.text or ""
+        # Use intent router for natural language processing
+        response = handle_natural_language(user_text, debug=True)
         await message.answer(response)
+
+    # Callback handler for inline keyboard buttons
+    @dp.callback_query()
+    async def handle_callback(callback_query: types.CallbackQuery):
+        """Handle inline keyboard button clicks."""
+        data = callback_query.data
+        await callback_query.answer()  # Acknowledge the callback
+
+        if data == "action_labs":
+            response = handle_labs()
+        elif data == "action_scores":
+            response = "Please specify a lab, e.g., /scores lab-04"
+        elif data == "action_top":
+            response = handle_natural_language("who are the top 5 students in lab 04", debug=False)
+        elif data == "action_stats":
+            response = handle_natural_language("show me stats for lab 04", debug=False)
+        elif data == "action_help":
+            response = handle_help()
+        else:
+            response = "Please use /help to see available commands."
+
+        await callback_query.message.answer(response)
 
     # Set up bot commands in Telegram
     await bot.set_my_commands([
         BotCommand(command="start", description="Welcome message"),
         BotCommand(command="help", description="Show all commands"),
-        BotCommand(command="health", description="Check bot status"),
+        BotCommand(command="health", description="Check backend status"),
         BotCommand(command="labs", description="List available labs"),
-        BotCommand(command="scores", description="Get your scores"),
+        BotCommand(command="scores", description="Get scores for a lab"),
     ])
 
     print("🤖 Telegram bot started. Listening for messages...")
